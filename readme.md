@@ -14,7 +14,6 @@ socket.send(msg)
 let msg2: String // some string
 socket.send(msg2)
 ```
-## Examples
 
 
 # MIT License
