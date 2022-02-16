@@ -1,7 +1,14 @@
 import Network
+import SwiftUI
 
 public func sleeps(sec: Double){
     usleep(UInt32(sec * 1000000))
+}
+
+public enum MarkoError: Error {
+    case noData
+    case incompleteData
+    case invalidContext
 }
 
 @available(macOS 10.14, *)
@@ -60,6 +67,29 @@ public class UDPSocket {
             }
         }
         return self.msg
+    }
+    
+    public func receive(
+            closure: @escaping (Data, NWConnection.ContentContext) -> Void,
+            onFailure: @escaping (MarkoError) -> Void) -> Void {
+        
+        self.connection?.receiveMessage { (data, context, isComplete, error) in
+            if (isComplete) {
+//                let data = data!
+                guard let data = data else {
+                    return onFailure(MarkoError.noData)
+                }
+                guard let context = context else {
+                    return onFailure(MarkoError.invalidContext)
+                }
+                    
+//                let context = context!
+                return closure(data, context)
+            }
+            else {
+                return onFailure(MarkoError.incompleteData)
+            }
+        }
     }
     
     public func printAddresses() {
