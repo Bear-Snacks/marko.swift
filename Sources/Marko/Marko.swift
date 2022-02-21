@@ -1,10 +1,16 @@
 import Network
 import SwiftUI
 
+/// Sleep in seconds
+/// - Parameters:
+///    - sec: seconds to sleep for
 public func sleeps(_ sec: Double){
     usleep(UInt32(sec * 1000000))
 }
 
+/// Returns the IP address of the machine for wifi and wired connections.
+/// Reference:  [stackoverflow](https://stackoverflow.com/a/56342010/5374768)
+/// - Returns: IP address as a `String`
 public func getIPAddress() -> String {
     var address: String?
     var ifaddr: UnsafeMutablePointer<ifaddrs>? = nil
@@ -39,10 +45,11 @@ public enum MarkoError: Error {
     case noData
     case incompleteData
     case invalidContext
-    case sendError
+    case sendError /// error on send
     case receiveError
 }
 
+/// Creates a UDP socket.
 @available(macOS 10.14, *)
 public class UDPConnect {
     var connection: NWConnection? = nil
@@ -50,16 +57,24 @@ public class UDPConnect {
     var state: MarkoError = .noError
     var mtu: Int
     
+    /// Initializer
+    /// - Parameters:
+    ///     - mtu: how big the packet is, default is max size (65535)
     public init(mtu: Int = 65535) {
         self.mtu = mtu
     }
     
+    /// Initialize the socket given an existing `NWConnect`
+    /// - Parameters:
+    ///     - connection: an existing `NWConnect`
+    ///     - mtu: how big the packet is, default is max size (65535)
     public init(_ connection: NWConnection, mtu: Int = 65535){
         self.mtu = mtu
         self.connection = connection
         self.finishSetup()
     }
     
+    /// Connects the socket to a host:port
     public func connect(ip: NWEndpoint.Host, port: NWEndpoint.Port) {
         guard connection != nil else { return }
         
@@ -93,11 +108,13 @@ public class UDPConnect {
         self.connection?.start(queue: .global())
     }
     
+    /// Send `String`, on error, this stop the socket
     public func send(_ content: String) {
         guard let d = content.data(using: String.Encoding.utf8) else { return }
         self.send(d)
     }
     
+    /// Send `Data`, on error, this stop the socket
     public func send(_ data: Data) {
         if self.connection?.state != .ready { return }
         self.connection?.send(
@@ -110,6 +127,7 @@ public class UDPConnect {
             })
     }
     
+    /// Receives data from connection and sends it to the closure.
     public func receive(closure: @escaping (Data) -> Void){
         if self.connection?.state != .ready { return }
         
@@ -135,6 +153,7 @@ public class UDPConnect {
         }
     }
     
+    /// Stops this socket by cancelling it
     public func stop(){
         connection?.stateUpdateHandler = nil
         connection?.cancel()
@@ -144,16 +163,20 @@ public class UDPConnect {
 
 //----------------------------------------------------------------------------
 
-
+/// Creates a UDP socket that is bound to an ip:port.
 @available(macOS 10.14, *)
 public class UDPBind {
-    var listener: NWListener?
+    private var listener: NWListener?
     private static var counterID: Int = 0
-    
     private var connectionsByID: [Int: ClientConnection] = [:]
     
     public init() { }
     
+    /// This actually creates the `NWListener` socket and binds to the host:port given
+    /// - Parameters:
+    ///     - host: host ip address
+    ///     - port: port to use
+    /// - Throws: NWListener.NWError
     public func bind(host: NWEndpoint.Host, port: NWEndpoint.Port) throws {
         let parameters = NWParameters.udp.copy()
         parameters.requiredLocalEndpoint = .hostPort(host: host, port: port)
@@ -161,10 +184,10 @@ public class UDPBind {
         parameters.acceptLocalOnly = false
         parameters.includePeerToPeer = true
         
-        listener = try! NWListener(using:parameters)
+        listener = try NWListener(using:parameters)
         
-        listener?.stateUpdateHandler = { newState in
-            switch newState {
+        listener?.stateUpdateHandler = { [weak self] state in
+            switch state {
             case .ready:
                 print("Server ready.")
             case .failed(let error):
@@ -173,7 +196,7 @@ public class UDPBind {
             case .setup:
                 print("Server setup")
             default:
-                print(String(describing: self.listener?.state))
+                print(String(describing: self?.listener?.state))
                 break
             }
         }
@@ -189,6 +212,7 @@ public class UDPBind {
         print(">> \(String(describing: listener?.state))")
     }
     
+    /// Sends data to each connected client
     public func send(_ data: Data){
         for client in self.connectionsByID.values {
             if client.connection.connection?.state == .cancelled {
@@ -216,6 +240,8 @@ struct ClientConnection {
     }
     
     public func recv(){
-        
+        self.connection.receive(){ data in
+            
+        }
     }
 }
