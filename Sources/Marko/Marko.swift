@@ -1,38 +1,90 @@
 import Network
 import SwiftUI
 
-public func sleeps(sec: Double){
+public func sleeps(_ sec: Double){
     usleep(UInt32(sec * 1000000))
 }
 
+public func getIPAddress() -> String {
+    var address: String?
+    var ifaddr: UnsafeMutablePointer<ifaddrs>? = nil
+    if getifaddrs(&ifaddr) == 0 {
+        var ptr = ifaddr
+        while ptr != nil {
+            defer { ptr = ptr?.pointee.ifa_next }
+            
+            guard let interface = ptr?.pointee else { return "" }
+            let addrFamily = interface.ifa_addr.pointee.sa_family
+            if addrFamily == UInt8(AF_INET) || addrFamily == UInt8(AF_INET6) {
+                
+                // wifi = ["en0"]
+                // wired = ["en2", "en3", "en4"]
+                // cellular = ["pdp_ip0","pdp_ip1","pdp_ip2","pdp_ip3"]
+                
+                let name: String = String(cString: (interface.ifa_name))
+                if  name == "en0" || name == "en2" || name == "en3" || name == "en4" /*|| name == "pdp_ip0" || name == "pdp_ip1" || name == "pdp_ip2" || name == "pdp_ip3"*/ {
+                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                    getnameinfo(interface.ifa_addr, socklen_t((interface.ifa_addr.pointee.sa_len)), &hostname, socklen_t(hostname.count), nil, socklen_t(0), NI_NUMERICHOST)
+                    address = String(cString: hostname)
+                }
+            }
+        }
+        freeifaddrs(ifaddr)
+    }
+    return address ?? ""
+}
+
 public enum MarkoError: Error {
+    case noError
     case noData
     case incompleteData
     case invalidContext
+    case sendError
+    case receiveError
 }
 
 @available(macOS 10.14, *)
-public class UDPSocket {
-    var connection: NWConnection?
-    var msg: String = "None"
+public class UDPConnect {
+    var connection: NWConnection? = nil
+    var data: Data? = nil
+    var state: MarkoError = .noError
+    var mtu: Int
     
-    public init(ip: NWEndpoint.Host, port: NWEndpoint.Port) {
+    public init(mtu: Int = 65535) {
+        self.mtu = mtu
+    }
+    
+    public init(_ connection: NWConnection, mtu: Int = 65535){
+        self.mtu = mtu
+        self.connection = connection
+        self.finishSetup()
+    }
+    
+    public func connect(ip: NWEndpoint.Host, port: NWEndpoint.Port) {
+        guard connection != nil else { return }
         
         self.connection = NWConnection(
             host: ip,
             port: port,
             using: .udp)
         
+        self.finishSetup()
+    }
+    
+    private func finishSetup(){
         self.connection?.stateUpdateHandler = { (state) in
             switch (state) {
             case .ready:
-                print("UDPSocket: ready")
+                let endpt = self.connection?.endpoint
+                let local = self.connection?.currentPath?.localEndpoint
+                print("  UDPConnect ready remote: \(String(describing: endpt))")
+                print("  UDPConnect ready local: \(String(describing: local))")
             case .setup:
-                print("UDPSocket: setup")
+                print("UDPConnect: setup")
             case .cancelled:
-                print("UDPSocket: cancelled")
+                print("UDPConnect: cancelled")
             case .preparing:
-                print("UDPSocket: preparing")
+                print("UDPConnect: preparing")
             default:
                 print("waiting or failed")
             }
@@ -41,112 +93,129 @@ public class UDPSocket {
         self.connection?.start(queue: .global())
     }
     
-    deinit {
-        self.connection?.cancel()
-    }
-    
     public func send(_ content: String) {
-        let contentToSendUDP = content.data(using: String.Encoding.utf8)
+        guard let d = content.data(using: String.Encoding.utf8) else { return }
+        self.send(d)
+    }
+    
+    public func send(_ data: Data) {
+        if self.connection?.state != .ready { return }
         self.connection?.send(
-            content: contentToSendUDP,
-            completion: NWConnection.SendCompletion.contentProcessed({ NWError in
-                if (NWError != nil) {
-                    print("*** UDPSocket send() error: \(NWError!)")
+            content: data,
+            completion: .contentProcessed(){ error in
+                if (error != nil) {
+                    print("*** UDPConnect send() error: \(error!) ***")
+                    self.stop()
                 }
-            }))
+            })
     }
     
-    public func receive() -> String {
-        self.connection?.receiveMessage { (data, context, isComplete, error) in
-            if (isComplete) {
-                if (data != nil) {
-                    self.msg = String(decoding: data!, as: UTF8.self)
-                } else {
-                    print("Data == nil")
-                }
-            }
-        }
-        return self.msg
-    }
-    
-    public func receive(
-            closure: @escaping (Data, NWConnection.ContentContext) -> Void,
-            onFailure: @escaping (MarkoError) -> Void) -> Void {
+    public func receive(closure: @escaping (Data) -> Void){
+        if self.connection?.state != .ready { return }
         
-        self.connection?.receiveMessage { (data, context, isComplete, error) in
-            if (isComplete) {
-//                let data = data!
-                guard let data = data else {
-                    return onFailure(MarkoError.noData)
-                }
-                guard let context = context else {
-                    return onFailure(MarkoError.invalidContext)
-                }
-                    
-//                let context = context!
-                return closure(data, context)
+        self.connection?.receive(minimumIncompleteLength: 1, maximumLength: self.mtu) { (data, context, isComplete, error) in
+            if (error != nil) {
+                print("*** \(String(describing: error)) ***")
+                self.stop()
+                return
             }
-            else {
-                return onFailure(MarkoError.incompleteData)
+            
+            else if (isComplete == false){
+                self.state = .incompleteData
+                return
             }
+            
+            guard let d: Data = data, !d.isEmpty else {
+                self.state = .noData
+                return
+            }
+            
+            self.state = .noError
+            closure(d)
         }
     }
     
-    public func printAddresses() {
-        var addrList : UnsafeMutablePointer<ifaddrs>?
-        guard
-            getifaddrs(&addrList) == 0,
-            let firstAddr = addrList
-        else { return }
-        defer { freeifaddrs(addrList) }
-        for cursor in sequence(first: firstAddr, next: { $0.pointee.ifa_next }) {
-            let interfaceName = String(cString: cursor.pointee.ifa_name)
-            let addrStr: String
-            var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            if
-                let addr = cursor.pointee.ifa_addr,
-                getnameinfo(addr, socklen_t(addr.pointee.sa_len), &hostname, socklen_t(hostname.count), nil, socklen_t(0), NI_NUMERICHOST) == 0,
-                hostname[0] != 0
-            {
-                addrStr = String(cString: hostname)
-            } else {
-                addrStr = "?"
-            }
-            print(interfaceName, addrStr)
-        }
-        return
+    public func stop(){
+        connection?.stateUpdateHandler = nil
+        connection?.cancel()
     }
-    
-    //    public func requestAuthorization(completion: @escaping (Bool) -> Void) {
-    //        self.completion = completion
-    //
-    //        // Create parameters, and allow browsing over peer-to-peer link.
-    //        let parameters = NWParameters()
-    //        parameters.includePeerToPeer = true
-    //
-    //        // Browse for a custom service type.
-    //        let browser = NWBrowser(for: .bonjour(type: "_bonjour._tcp", domain: nil), using: parameters)
-    //        self.browser = browser
-    //        browser.stateUpdateHandler = { newState in
-    //            switch newState {
-    //            case .failed(let error):
-    //                print(error.localizedDescription)
-    //            case .ready, .cancelled:
-    //                break
-    //            case let .waiting(error):
-    //                print("Local network permission has been denied: \(error)")
-    //                self.reset()
-    //                self.completion?(false)
-    //            default:
-    //                break
-    //            }
-    //        }
-    //
-    //        self.netService = NetService(domain: "local.", type:"_lnp._tcp.", name: "LocalNetworkPrivacy", port: 1100)
-    //        self.netService?.delegate = self
-    //
-    //        self.browser?.start(queue: .main)
-    //        self.netService?.publish()
-    //    }
 }
 
+
+//----------------------------------------------------------------------------
+
+
+@available(macOS 10.14, *)
+public class UDPBind {
+    var listener: NWListener?
+    private static var counterID: Int = 0
+    
+    private var connectionsByID: [Int: ClientConnection] = [:]
+    
+    public init() { }
+    
+    public func bind(host: NWEndpoint.Host, port: NWEndpoint.Port) throws {
+        let parameters = NWParameters.udp.copy()
+        parameters.requiredLocalEndpoint = .hostPort(host: host, port: port)
+        parameters.allowLocalEndpointReuse = true
+        parameters.acceptLocalOnly = false
+        parameters.includePeerToPeer = true
+        
+        listener = try! NWListener(using:parameters)
+        
+        listener?.stateUpdateHandler = { newState in
+            switch newState {
+            case .ready:
+                print("Server ready.")
+            case .failed(let error):
+                print("Server failure, error: \(error.localizedDescription)")
+                exit(EXIT_FAILURE)
+            case .setup:
+                print("Server setup")
+            default:
+                print(String(describing: self.listener?.state))
+                break
+            }
+        }
+        
+        listener?.newConnectionHandler = { [weak self] nwConnection in
+            print("didAccept")
+            let connection = ClientConnection(id: UDPBind.counterID, connection: nwConnection)
+            UDPBind.counterID += 1
+            self?.connectionsByID[connection.id] = connection
+        }
+
+        listener?.start(queue: .main)
+        print(">> \(String(describing: listener?.state))")
+    }
+    
+    public func send(_ data: Data){
+        for client in self.connectionsByID.values {
+            if client.connection.connection?.state == .cancelled {
+                self.connectionsByID.removeValue(forKey: client.id)
+                continue
+            }
+            client.connection.send(data)
+        }
+    }
+}
+
+@available(macOS 10.14, *)
+struct ClientConnection {
+    let id: Int
+    let connection: UDPConnect
+    
+    public init (id: Int, connection: NWConnection){
+        self.id = id
+        self.connection = UDPConnect(connection)
+        print(">> New ClientConnection -----------------")
+    }
+    
+    public func send(_ data: Data){
+        self.connection.send(data)
+    }
+    
+    public func recv(){
+        
+    }
+}
