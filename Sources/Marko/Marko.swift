@@ -1,12 +1,37 @@
 import Network
 import SwiftUI
 
-/// Sleep in seconds
+/// Sleep function in seconds
+///
 /// - Parameters:
 ///    - sec: seconds to sleep for
 public func sleeps(_ sec: Double){
     usleep(UInt32(sec * 1000000))
 }
+
+/// Generate an array of `Int` from 0 to `upto`.
+///
+/// - Parameters
+///     - upto: max value
+public func range(_ upto: Int) -> [Int] {
+    return Array(0 ..< upto)
+}
+
+/// Coverts an object to a byte array formated as [LSB ... MSB]
+/// 
+/// Ref [stackoverflow](https://stackoverflow.com/questions/26953591/how-to-convert-a-double-into-a-byte-array-in-swift)
+public func toByteArray<T>(_ value: T) -> [UInt8] {
+    var value = value
+    return withUnsafeBytes(of: &value) { Array($0) }
+}
+
+//func toByteArray<T>(_ value: [T]) -> [UInt8] {
+//    var darray: [UInt8] = []
+//    for d in value {
+//        darray.append(contentsOf: toByteArray(d))
+//    }
+//    return darray
+//}
 
 /// Returns the IP address of the machine for wifi and wired connections.
 /// Reference:  [stackoverflow](https://stackoverflow.com/a/56342010/5374768)
@@ -45,12 +70,12 @@ public enum MarkoError: Error {
     case noData
     case incompleteData
     case invalidContext
-    case sendError /// error on send
+    case sendError /** Error during send */
     case receiveError
 }
 
 /// Creates a UDP socket.
-@available(macOS 10.14, *)
+@available(macOS 10.14, iOS 13, *)
 public class UDPConnect {
     var connection: NWConnection? = nil
     var data: Data? = nil
@@ -75,11 +100,11 @@ public class UDPConnect {
     }
     
     /// Connects the socket to a host:port
-    public func connect(ip: NWEndpoint.Host, port: NWEndpoint.Port) {
+    public func connect(host: NWEndpoint.Host, port: NWEndpoint.Port) {
         guard connection != nil else { return }
         
         self.connection = NWConnection(
-            host: ip,
+            host: host,
             port: port,
             using: .udp)
         
@@ -155,8 +180,10 @@ public class UDPConnect {
     
     /// Stops this socket by cancelling it
     public func stop(){
-        connection?.stateUpdateHandler = nil
-        connection?.cancel()
+        if connection?.stateUpdateHandler != nil {
+            connection?.stateUpdateHandler = nil
+            connection?.cancel()
+        }
     }
 }
 
@@ -164,7 +191,7 @@ public class UDPConnect {
 //----------------------------------------------------------------------------
 
 /// Creates a UDP socket that is bound to an ip:port.
-@available(macOS 10.14, *)
+@available(macOS 10.14, iOS 13, *)
 public class UDPBind {
     private var listener: NWListener?
     private static var counterID: Int = 0
@@ -224,7 +251,7 @@ public class UDPBind {
     }
 }
 
-@available(macOS 10.14, *)
+@available(macOS 10.14, iOS 13, *)
 struct ClientConnection {
     let id: Int
     let connection: UDPConnect
