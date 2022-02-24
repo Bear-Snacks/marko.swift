@@ -43,9 +43,11 @@ struct Bob {
     let a: Double
     let b: Int16
     
+    // convert this struct into an array of bytes for transmission
+    // across the network
     func pack() -> [UInt8] {
         var buffer: [UInt8] = []
-        buffer.append(0xfe)
+        buffer.append(0xfe) // header byte
         buffer.append(contentsOf: toByteArray(self.a))
         buffer.append(contentsOf: toByteArray(self.b))
         
@@ -54,3 +56,4 @@ struct Bob {
     }
 }
 ```
+

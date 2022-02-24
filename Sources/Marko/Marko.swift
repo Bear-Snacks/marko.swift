@@ -1,5 +1,11 @@
+/*========================================
+ MIT License
+ 
+ Copyright (c) 2019 Kevin J. Walchko
+=========================================*/
+
 import Network
-import SwiftUI
+import Foundation
 
 /// Sleep function in seconds
 ///
@@ -65,210 +71,13 @@ public func getIPAddress() -> String {
     return address ?? ""
 }
 
-public enum MarkoError: Error {
-    case noError
-    case noData
-    case incompleteData
-    case invalidContext
-    case sendError /** Error during send */
-    case receiveError
-}
 
-/// Creates a UDP socket.
-@available(macOS 10.14, iOS 13, *)
-public class UDPConnect {
-    var connection: NWConnection? = nil
-    var data: Data? = nil
-    var state: MarkoError = .noError
-    var mtu: Int
-    
-    /// Initializer
-    /// - Parameters:
-    ///     - mtu: how big the packet is, default is max size (65535)
-    public init(mtu: Int = 65535) {
-        self.mtu = mtu
-    }
-    
-    /// Initialize the socket given an existing `NWConnect`
-    /// - Parameters:
-    ///     - connection: an existing `NWConnect`
-    ///     - mtu: how big the packet is, default is max size (65535)
-    public init(_ connection: NWConnection, mtu: Int = 65535){
-        self.mtu = mtu
-        self.connection = connection
-        self.finishSetup()
-    }
-    
-    /// Connects the socket to a host:port
-    public func connect(host: NWEndpoint.Host, port: NWEndpoint.Port) {
-        guard connection != nil else { return }
-        
-        self.connection = NWConnection(
-            host: host,
-            port: port,
-            using: .udp)
-        
-        self.finishSetup()
-    }
-    
-    private func finishSetup(){
-        self.connection?.stateUpdateHandler = { (state) in
-            switch (state) {
-            case .ready:
-                let endpt = self.connection?.endpoint
-                let local = self.connection?.currentPath?.localEndpoint
-                print("  UDPConnect ready remote: \(String(describing: endpt))")
-                print("  UDPConnect ready local: \(String(describing: local))")
-            case .setup:
-                print("UDPConnect: setup")
-            case .cancelled:
-                print("UDPConnect: cancelled")
-            case .preparing:
-                print("UDPConnect: preparing")
-            default:
-                print("waiting or failed")
-            }
-        }
-        
-        self.connection?.start(queue: .global())
-    }
-    
-    /// Send `String`, on error, this stop the socket
-    public func send(_ content: String) {
-        guard let d = content.data(using: String.Encoding.utf8) else { return }
-        self.send(d)
-    }
-    
-    /// Send `Data`, on error, this stop the socket
-    public func send(_ data: Data) {
-        if self.connection?.state != .ready { return }
-        self.connection?.send(
-            content: data,
-            completion: .contentProcessed(){ error in
-                if (error != nil) {
-                    print("*** UDPConnect send() error: \(error!) ***")
-                    self.stop()
-                }
-            })
-    }
-    
-    /// Receives data from connection and sends it to the closure.
-    public func receive(closure: @escaping (Data) -> Void){
-        if self.connection?.state != .ready { return }
-        
-        self.connection?.receive(minimumIncompleteLength: 1, maximumLength: self.mtu) { (data, context, isComplete, error) in
-            if (error != nil) {
-                print("*** \(String(describing: error)) ***")
-                self.stop()
-                return
-            }
-            
-            else if (isComplete == false){
-                self.state = .incompleteData
-                return
-            }
-            
-            guard let d: Data = data, !d.isEmpty else {
-                self.state = .noData
-                return
-            }
-            
-            self.state = .noError
-            closure(d)
-        }
-    }
-    
-    /// Stops this socket by cancelling it
-    public func stop(){
-        if connection?.stateUpdateHandler != nil {
-            connection?.stateUpdateHandler = nil
-            connection?.cancel()
-        }
-    }
-}
+//============================================================================
 
-
-//----------------------------------------------------------------------------
-
-/// Creates a UDP socket that is bound to an ip:port.
-@available(macOS 10.14, iOS 13, *)
-public class UDPBind {
-    private var listener: NWListener?
-    private static var counterID: Int = 0
-    private var connectionsByID: [Int: ClientConnection] = [:]
-    
-    public init() { }
-    
-    /// This actually creates the `NWListener` socket and binds to the host:port given
-    /// - Parameters:
-    ///     - host: host ip address
-    ///     - port: port to use
-    /// - Throws: NWListener.NWError
-    public func bind(host: NWEndpoint.Host, port: NWEndpoint.Port) throws {
-        let parameters = NWParameters.udp.copy()
-        parameters.requiredLocalEndpoint = .hostPort(host: host, port: port)
-        parameters.allowLocalEndpointReuse = true
-        parameters.acceptLocalOnly = false
-        parameters.includePeerToPeer = true
-        
-        listener = try NWListener(using:parameters)
-        
-        listener?.stateUpdateHandler = { [weak self] state in
-            switch state {
-            case .ready:
-                print("Server ready.")
-            case .failed(let error):
-                print("Server failure, error: \(error.localizedDescription)")
-                exit(EXIT_FAILURE)
-            case .setup:
-                print("Server setup")
-            default:
-                print(String(describing: self?.listener?.state))
-                break
-            }
-        }
-        
-        listener?.newConnectionHandler = { [weak self] nwConnection in
-            print("didAccept")
-            let connection = ClientConnection(id: UDPBind.counterID, connection: nwConnection)
-            UDPBind.counterID += 1
-            self?.connectionsByID[connection.id] = connection
-        }
-
-        listener?.start(queue: .main)
-        print(">> \(String(describing: listener?.state))")
-    }
-    
-    /// Sends data to each connected client
-    public func send(_ data: Data){
-        for client in self.connectionsByID.values {
-            if client.connection.connection?.state == .cancelled {
-                self.connectionsByID.removeValue(forKey: client.id)
-                continue
-            }
-            client.connection.send(data)
-        }
-    }
-}
-
-@available(macOS 10.14, iOS 13, *)
-struct ClientConnection {
-    let id: Int
-    let connection: UDPConnect
-    
-    public init (id: Int, connection: NWConnection){
-        self.id = id
-        self.connection = UDPConnect(connection)
-        print(">> New ClientConnection -----------------")
-    }
-    
-    public func send(_ data: Data){
-        self.connection.send(data)
-    }
-    
-    public func recv(){
-        self.connection.receive(){ data in
-            
-        }
-    }
+protocol MSocket {
+//    var mtu: Int { get }
+    func send(_ content: String)
+    func send(_ data: Data)
+    func receive(closure: @escaping (Data) -> Void)
+//    func receive(closure: @autoclosure () -> Void)
 }

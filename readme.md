@@ -4,21 +4,7 @@ A simple library to do messaging over UDP.
 
 ## Usage
 
-```swift
-let socket = UDPConnect()
-socket.connect(ip: "1.2.3.4", port: 9000)
-
-let msg: [UInt8] // some array of bytes
-socket.send(msg)
-
-let msg2: String // some string
-socket.send(msg2)
-```
-```swift
-let host = getIPAddress()
-let server = UDPBind()
-server.bind(host, 9500)
-```
+[docs](Sources/Marko/Marko.docc/API.md)
 
 
 # MIT License
