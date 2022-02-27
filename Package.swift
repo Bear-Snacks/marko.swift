@@ -25,9 +25,9 @@ let package = Package(
         .target(
             name: "Marko",
             dependencies: []),
-//        .testTarget(
-//            name: "MarkoTests",
-//            dependencies: ["Marko"]),
+        .testTarget(
+            name: "MarkoTests",
+            dependencies: ["Marko"]),
     ],
     swiftLanguageVersions: [.v5]
 )

@@ -12,13 +12,6 @@ import Foundation
 /// Creates a UDP socket that is bound to an ip:port.
 @available(macOS 10.14, iOS 13, *)
 public class UDPBind: MSocket {
-    func send(_ content: String) {
-        //
-    }
-    
-    func receive(closure: @escaping (Data) -> Void) {
-        //
-    }
     
     private var listener: NWListener?
     private static var counterID: Int = 0
@@ -31,8 +24,8 @@ public class UDPBind: MSocket {
     ///     - host: host ip address
     ///     - port: port to use
     /// - Throws: NWListener.NWError
-    public func bind(host: NWEndpoint.Host, port: NWEndpoint.Port) throws {
-        let parameters = NWParameters.udp.copy()
+    public func bind(host: NWEndpoint.Host, port: NWEndpoint.Port, transport: NWParameters = .udp) throws {
+        let parameters = transport.copy() // NWParameters.udp.copy()
         parameters.requiredLocalEndpoint = .hostPort(host: host, port: port)
         parameters.allowLocalEndpointReuse = true
         parameters.acceptLocalOnly = false
@@ -77,8 +70,32 @@ public class UDPBind: MSocket {
         }
     }
     
+    func send(_ content: String) {
+        guard let d = content.data(using: String.Encoding.utf8) else { return }
+        self.send(d)
+    }
+    
+    func receive(closure: @escaping (Data) -> Void) {
+        for client in self.connectionsByID.values {
+            if client.connection.connection?.state == .cancelled {
+                self.connectionsByID.removeValue(forKey: client.id)
+                continue
+            }
+            guard let d = client.connection.receive(), !d.isEmpty else {return}
+            closure(d)
+        }
+    }
+    
     public func receive() -> Data? { // FIXME
         return nil
+//        if self.connection?.state != .ready { return nil }
+//
+//        var retData: Data? = nil
+//        self.receive(){ data in
+//            retData = data
+//        }
+//
+//        return retData
     }
 }
 

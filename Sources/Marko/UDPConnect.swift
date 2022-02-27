@@ -39,13 +39,14 @@ public class UDPConnect: MSocket {
     }
     
     /// Connects the socket to a host:port
-    public func connect(host: NWEndpoint.Host, port: NWEndpoint.Port) {
+    public func connect(host: NWEndpoint.Host, port: NWEndpoint.Port, transport: NWParameters = .udp) {
         guard connection != nil else { return }
         
         self.connection = NWConnection(
             host: host,
             port: port,
-            using: .udp)
+            using: transport)
+//            using: .udp)
         
         self.finishSetup()
     }
