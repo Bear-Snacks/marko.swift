@@ -42,9 +42,9 @@ class Subscriber<ItemType> where ItemType: MSocket {
     }
 }
 
-func test(){
-    let sock = UDPBind()
-    try! sock.bind(host: "1.2.3.4", port: 5000)
-    let pub = Publisher<UDPBind>(socket: sock)
-    pub.publish("hi".data(using: String.Encoding.utf8)!)
-}
+//func test(){
+//    let sock = UDPBind()
+//    try! sock.bind(host: "1.2.3.4", port: 5000)
+//    let pub = Publisher<UDPBind>(socket: sock)
+//    pub.publish("hi".data(using: String.Encoding.utf8)!)
+//}

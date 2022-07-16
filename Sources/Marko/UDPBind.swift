@@ -16,6 +16,11 @@ public class UDPBind: MSocket {
     private var listener: NWListener?
     private static var counterID: Int = 0
     private var connectionsByID: [Int: ClientConnection] = [:]
+//    private let closure: (Data) -> Void
+    
+//    public init(closure: @escaping (Data) -> Void) {
+//        self.closure = closure
+//    }
     
     public init() { }
     
@@ -51,6 +56,36 @@ public class UDPBind: MSocket {
         listener?.newConnectionHandler = { [weak self] nwConnection in
             print("didAccept")
             let connection = ClientConnection(id: UDPBind.counterID, connection: nwConnection)
+            
+//            connection.connection.receive(){ data in
+//                print(data)
+//            }
+            
+//            connection.connection.receive() { data in
+//                print("?? receive data")
+//                connection.connection.connection?.receive(minimumIncompleteLength: 1, maximumLength: connection.connection.mtu) { (data, context, isComplete, error) in
+//                    if (error != nil) {
+//                        print("*** \(String(describing: error)) ***")
+////                        self.stop()
+//                        return
+//                    }
+//
+//                    else if (isComplete == false){
+////                        self.state = .incompleteData
+//                        return
+//                    }
+//
+//                    guard let d: Data = data, !d.isEmpty else {
+////                        self.state = .noData
+//                        return
+//                    }
+//
+////                    self.state = .noError
+////                    closure(d)
+//                    print(d)
+//                }
+//            }
+            
             UDPBind.counterID += 1
             self?.connectionsByID[connection.id] = connection
         }
@@ -70,20 +105,22 @@ public class UDPBind: MSocket {
         }
     }
     
+    /// Send `String` to each connected client
     func send(_ content: String) {
         guard let d = content.data(using: String.Encoding.utf8) else { return }
         self.send(d)
     }
     
+    
     func receive(closure: @escaping (Data) -> Void) {
-        for client in self.connectionsByID.values {
-            if client.connection.connection?.state == .cancelled {
-                self.connectionsByID.removeValue(forKey: client.id)
-                continue
-            }
-            guard let d = client.connection.receive(), !d.isEmpty else {return}
-            closure(d)
-        }
+//        for client in self.connectionsByID.values {
+//            if client.connection.connection?.state == .cancelled {
+//                self.connectionsByID.removeValue(forKey: client.id)
+//                continue
+//            }
+//            guard let d = client.connection.receive(), !d.isEmpty else {return}
+//            closure(d)
+//        }
     }
     
     public func receive() -> Data? { // FIXME
@@ -114,9 +151,9 @@ struct ClientConnection {
         self.connection.send(data)
     }
     
-    public func recv(){
-        self.connection.receive(){ data in
-            
-        }
-    }
+//    public func recv(){
+//        self.connection.receive(){ data in
+//
+//        }
+//    }
 }

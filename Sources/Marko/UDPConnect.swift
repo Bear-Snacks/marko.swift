@@ -121,7 +121,7 @@ public class UDPConnect: MSocket {
     /// Receives data from connection
     /// - Returns: `Data`?
     public func receive() -> Data? {
-        if self.connection?.state != .ready { return nil }
+//        if self.connection?.state != .ready { return nil }
         
         var retData: Data? = nil
         self.receive(){ data in
