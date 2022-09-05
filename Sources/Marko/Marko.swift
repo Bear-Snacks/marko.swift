@@ -31,6 +31,13 @@ public func toByteArray<T>(_ value: T) -> [UInt8] {
     return withUnsafeBytes(of: &value) { Array($0) }
 }
 
+/// Coverts an object from struct Data
+///
+public func fromByteArray<T>(_ buffer:Data) -> T {
+    let converted:T = buffer.withUnsafeBytes { $0.load(as: T.self) }
+    return converted
+}
+
 //func toByteArray<T>(_ value: [T]) -> [UInt8] {
 //    var darray: [UInt8] = []
 //    for d in value {

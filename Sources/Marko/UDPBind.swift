@@ -106,7 +106,7 @@ public class UDPBind: MSocket {
     }
     
     /// Send `String` to each connected client
-    func send(_ content: String) {
+    public func send(_ content: String) {
         guard let d = content.data(using: String.Encoding.utf8) else { return }
         self.send(d)
     }
